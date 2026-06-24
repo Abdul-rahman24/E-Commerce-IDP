@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import TypeVar, Generic
 
 class CreateProductDTO(BaseModel):
     sku: str = Field(..., min_length=3)
@@ -33,3 +34,9 @@ class ProductResponseDTO(BaseModel):
     attributes: Dict[str, Any]
     created_at: datetime
     updated_at: datetime
+
+T = TypeVar('T')
+
+class SuccessResponse(BaseModel, Generic[T]):
+    success: bool = True
+    data: T

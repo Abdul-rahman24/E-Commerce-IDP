@@ -3,6 +3,11 @@ from decimal import Decimal
 from datetime import datetime
 from typing import List, Optional
 from src.models.product import Product
+from botocore.exceptions import ClientError
+from src.exceptions.app_exceptions import DatabaseError
+from src.utils.logger import get_logger
+
+logger = get_logger("ProductRepository")
 
 class DynamoDBProductRepository:
     def __init__(self):
@@ -47,15 +52,24 @@ class DynamoDBProductRepository:
         )
 
     def create(self, product: Product) -> Product:
-        self.table.put_item(Item=self._to_item(product))
-        return product
+        try:
+            self.table.put_item(Item=self._to_item(product))
+            logger.info(f"Successfully created product in DB", extra={"productId": product.product_id})
+            return product
+        except ClientError as e:
+            logger.error(f"DynamoDB ClientError: {str(e)}", extra={"productId": product.product_id})
+            raise DatabaseError("Failed to save product to database")
 
     def find_by_id(self, product_id: str) -> Optional[Product]:
-        response = self.table.get_item(Key={'productId': product_id})
-        item = response.get('Item')
-        if item and not item.get('is_deleted'):
-            return self._to_entity(item)
-        return None
+        try:
+            response = self.table.get_item(Key={'productId': product_id})
+            item = response.get('Item')
+            if item and not item.get('is_deleted'):
+                return self._to_entity(item)
+            return None
+        except ClientError as e:
+            logger.error(f"DynamoDB ClientError: {str(e)}", extra={"productId": product_id})
+            raise DatabaseError("Failed to retrieve product from database")
 
     def find_all(self) -> List[Product]:
         # Note: Scan is okay for small catalogs, but in scale, use Secondary Indexes
