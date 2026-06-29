@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 from src.controllers import product_controller
 from src.exceptions.app_exceptions import AppError
+from mangum import Mangum
 
 app = FastAPI(title="Product Service")
 
@@ -14,6 +15,7 @@ async def app_error_handler(request: Request, exc: AppError):
         status_code=exc.status_code,
         content={"success": False, "error": exc.message},
     )
+handler = Mangum(app)
 
 if __name__ == "__main__":
     uvicorn.run("src.main:app", host="127.0.0.1", port=8000, reload=True)
