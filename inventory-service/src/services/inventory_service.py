@@ -73,3 +73,31 @@ class InventoryService:
 
     def deduct_stock(self, dto: InventoryTransactionDTO) -> Inventory:
         return self.repository.atomic_update(dto.product_id, 0, -dto.quantity)
+    # --- NEW METHOD: Consumes Background SQS Events from Order Service ---
+    def handle_sqs_event(self, event_payload: dict):
+        event_type = event_payload.get("event_type")
+        items = event_payload.get("items", [])
+        order_id = event_payload.get("order_id")
+        
+        logger.info(f"Processing background event {event_type} for Order {order_id}")
+        
+        for item in items:
+            product_id = item["product_id"]
+            qty = item["quantity"]
+            
+            try:
+                if event_type == "ORDER_CREATED":
+                    logger.info(f"Reserving {qty} units of {product_id}")
+                    self.repository.atomic_update(product_id, -qty, qty)
+                    
+                elif event_type == "ORDER_CANCELLED":
+                    logger.info(f"Releasing {qty} units of {product_id}")
+                    self.repository.atomic_update(product_id, qty, -qty)
+                    
+                elif event_type in ["ORDER_COMPLETED", "ORDER_SHIPPED"]:
+                    logger.info(f"Permanently deducting {qty} units of {product_id}")
+                    self.repository.atomic_update(product_id, 0, -qty)
+            except Exception as e:
+                logger.error(f"Failed to update stock for {product_id} during {event_type}: {str(e)}")
+                # Raising the exception forces SQS to retry the message later!
+                raise e

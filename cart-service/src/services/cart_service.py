@@ -126,3 +126,18 @@ class CartService:
 
     def clear_cart(self, user_id: str) -> None:
         self.repository.delete_cart(user_id)
+
+    # --- NEW METHOD: Consumes Background SQS Events from Order Service ---
+    def handle_sqs_event(self, event_payload: dict):
+        event_type = event_payload.get("event_type")
+        user_id = event_payload.get("user_id")
+        order_id = event_payload.get("order_id")
+        
+        if event_type == "ORDER_CREATED" and user_id:
+            logger.info(f"Background Event: Emptying cart for User {user_id} (Order {order_id})")
+            try:
+                self.repository.delete_cart(user_id)
+                logger.info(f"Successfully cleared cart for User {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to clear cart for User {user_id}: {str(e)}")
+                raise e
