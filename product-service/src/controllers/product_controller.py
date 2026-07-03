@@ -6,19 +6,19 @@ from src.repositories.product_repository import DynamoDBProductRepository
 from src.utils.logger import get_logger
 
 logger = get_logger("ProductController")
-router = APIRouter(prefix="/api/v1/products", tags=["Products"])
+router = APIRouter(prefix="/v1/products", tags=["Products"])
 
 def get_product_service() -> ProductService:
     repo = DynamoDBProductRepository()
     return ProductService(repo)
 
-@router.post("/", response_model=SuccessResponse[ProductResponseDTO], status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=SuccessResponse[ProductResponseDTO], status_code=status.HTTP_201_CREATED)
 def create_product(dto: CreateProductDTO, service: ProductService = Depends(get_product_service)):
     logger.info("Received request to create product", extra={"sku": dto.sku})
     product = service.create_product(dto)
     return {"success": True, "data": product}
 
-@router.get("/", response_model=List[ProductResponseDTO])
+@router.get("", response_model=List[ProductResponseDTO])
 def get_all_products(service: ProductService = Depends(get_product_service)):
     return service.get_all_products()
 

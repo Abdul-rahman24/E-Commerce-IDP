@@ -1,0 +1,11 @@
+# Security: NEVER track environment variables
+.env
+
+# Build and Deployment artifacts
+package/
+deployment.zip
+*.zip
+
+# Python cache files
+__pycache__/
+*.pyc

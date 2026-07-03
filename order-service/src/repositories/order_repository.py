@@ -11,8 +11,11 @@ logger = get_logger("OrderRepository")
 
 class DynamoDBOrderRepository:
     def __init__(self):
-        self.dynamodb = boto3.resource('dynamodb')
-        self.table = self.dynamodb.Table('Orders')
+        # Use IAM Role credentials, set the company region
+        self.dynamodb = boto3.resource('dynamodb', region_name='ap-southeast-1')
+        
+        # Point to the new company table with the _abd suffix
+        self.table = self.dynamodb.Table('orders_abd')
 
     def _to_item(self, order: Order) -> dict:
         items_list = []

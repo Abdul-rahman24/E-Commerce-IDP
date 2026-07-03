@@ -4,7 +4,7 @@ from src.services.inventory_service import InventoryService
 from src.repositories.inventory_repository import DynamoDBInventoryRepository
 from src.dto.inventory_dto import InventoryResponseDTO, InventoryTransactionDTO, InitializeInventoryDTO, SuccessResponse
 
-router = APIRouter(prefix="/api/v1/inventory", tags=["Inventory"])
+router = APIRouter(prefix="/v1/inventory", tags=["Inventory"])
 
 def get_inventory_service() -> InventoryService:
     repo = DynamoDBInventoryRepository()

@@ -9,8 +9,11 @@ logger = get_logger("InventoryRepository")
 
 class DynamoDBInventoryRepository:
     def __init__(self):
-        self.dynamodb = boto3.resource('dynamodb')
-        self.table = self.dynamodb.Table('Inventory')
+        # Use IAM Role credentials, set the company region
+        self.dynamodb = boto3.resource('dynamodb', region_name='ap-southeast-1')
+        
+        # Point to the new company table with the _abd suffix
+        self.table = self.dynamodb.Table('inventory_abd')
 
     def get_by_product_id(self, product_id: str) -> Inventory:
         try:

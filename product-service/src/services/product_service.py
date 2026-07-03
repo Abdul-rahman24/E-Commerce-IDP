@@ -1,7 +1,11 @@
+import os
 import uuid
-import requests
+import json
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from typing import List
+from dotenv import load_dotenv
 from src.repositories.product_repository import DynamoDBProductRepository
 from src.models.product import Product
 from src.dto.product_dto import CreateProductDTO, UpdateProductDTO
@@ -10,9 +14,10 @@ from src.utils.logger import get_logger
 
 logger = get_logger("ProductService")
 
-# The address of our Inventory Service
-INVENTORY_SERVICE_URL = "http://127.0.0.1:8001/api/v1/inventory"
-SEARCH_SERVICE_URL = "http://127.0.0.1:8005/api/v1/search"
+# Load environment variables
+load_dotenv()
+INVENTORY_SERVICE_URL = os.environ.get("INVENTORY_SERVICE_URL")
+SEARCH_SERVICE_URL = os.environ.get("SEARCH_SERVICE_URL")
 
 class ProductService:
     def __init__(self, repository: DynamoDBProductRepository):
@@ -36,46 +41,57 @@ class ProductService:
             updated_at=datetime.now(timezone.utc)
         )
         
-        # 1. Save to the Product Database first
         saved_product = self.repository.create(new_product)
 
-        # 2. The Chain Reaction: Tell Inventory to initialize stock to 0
+        # 1. Trigger Inventory Initialization
         logger.info(f"Triggering inventory initialization for {saved_product.product_id}")
-        try:
-            response = requests.post(
-                f"{INVENTORY_SERVICE_URL}/initialize",
-                json={"product_id": saved_product.product_id},
-                timeout=5
-            )
-            if response.status_code != 200:
-                # We log the error, but we DO NOT crash the product creation
-                logger.error(f"Failed to initialize inventory for {saved_product.product_id}")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Inventory Service is offline: {str(e)}")
-
+        inv_payload = {"product_id": saved_product.product_id}
+        inv_data = json.dumps(inv_payload).encode('utf-8')
+        inv_req = urllib.request.Request(
+            f"{INVENTORY_SERVICE_URL}/initialize", 
+            data=inv_data, 
+            headers={'Content-Type': 'application/json'}
+        )
         
-
-        # 3. The Chain Reaction: Tell Search Service to index this product
         try:
-            requests.post(
-                f"{SEARCH_SERVICE_URL}/index",
-                json={
-                    "product_id": saved_product.product_id,
-                    "name": saved_product.name,
-                    "description": saved_product.description,
-                    "category": saved_product.category,
-                    "price": saved_product.price,
-                    "images": saved_product.images
-                },
-                timeout=5
-            )
-            logger.info(f"Triggered search indexing for {saved_product.product_id}")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Search Service is offline: {str(e)}")
+            with urllib.request.urlopen(inv_req, timeout=5) as response:
+                if response.getcode() != 200:
+                    logger.error(f"Failed to initialize inventory for {saved_product.product_id}. Status: {response.getcode()}")
+        except urllib.error.HTTPError as e:
+            logger.error(f"Inventory HTTP error: {e.code}")
+        except urllib.error.URLError as e:
+            logger.error(f"Inventory Service is offline or unreachable: {str(e)}")
+        except TimeoutError:
+            logger.error(f"Inventory Service request timed out for {saved_product.product_id}")
+
+        # 2. Trigger Search Indexing
+        search_payload = {
+            "product_id": saved_product.product_id,
+            "name": saved_product.name,
+            "description": saved_product.description,
+            "category": saved_product.category,
+            "price": saved_product.price,
+            "images": saved_product.images
+        }
+        search_data = json.dumps(search_payload).encode('utf-8')
+        search_req = urllib.request.Request(
+            f"{SEARCH_SERVICE_URL}/index",
+            data=search_data,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        try:
+            with urllib.request.urlopen(search_req, timeout=5) as response:
+                logger.info(f"Triggered search indexing for {saved_product.product_id}")
+        except urllib.error.HTTPError as e:
+            logger.error(f"Search HTTP error: {e.code}")
+        except urllib.error.URLError as e:
+            logger.error(f"Search Service is offline or unreachable: {str(e)}")
+        except TimeoutError:
+            logger.error(f"Search Service request timed out for {saved_product.product_id}")
         
         return saved_product
     
-
     def get_product(self, product_id: str) -> Product:
         product = self.repository.find_by_id(product_id)
         if not product:

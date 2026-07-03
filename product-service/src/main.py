@@ -5,7 +5,7 @@ from src.controllers import product_controller
 from src.exceptions.app_exceptions import AppError
 from mangum import Mangum
 
-app = FastAPI(title="Product Service")
+app = FastAPI(title="Product Service", redirect_slashes=False)
 
 app.include_router(product_controller.router)
 
@@ -15,6 +15,7 @@ async def app_error_handler(request: Request, exc: AppError):
         status_code=exc.status_code,
         content={"success": False, "error": exc.message},
     )
+
 handler = Mangum(app)
 
 if __name__ == "__main__":

@@ -2,12 +2,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import uvicorn
+from mangum import Mangum
 from src.controllers import payment_controller
 from src.exceptions.app_exceptions import AppError
 from src.utils.logger import get_logger
 
 logger = get_logger("MainApp")
-app = FastAPI(title="Payment Service")
+app = FastAPI(title="Payment Service",redirect_slashes=False)
 
 app.include_router(payment_controller.router)
 
@@ -24,6 +25,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {str(exc)}", exc_info=True)
     return JSONResponse(status_code=500, content={"success": False, "error": "Internal Server Error"})
+
+handler=Mangum(app)
 
 if __name__ == "__main__":
     # Running on port 8003

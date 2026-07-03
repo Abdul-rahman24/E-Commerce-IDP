@@ -12,8 +12,8 @@ logger = get_logger("ProductRepository")
 class DynamoDBProductRepository:
     def __init__(self):
         # Automatically uses the credentials from 'aws configure'
-        self.dynamodb = boto3.resource('dynamodb')
-        self.table = self.dynamodb.Table('Products')
+        self.dynamodb = boto3.resource('dynamodb', region_name='ap-southeast-1')
+        self.table = self.dynamodb.Table('products_abd')
 
     def _to_item(self, product: Product) -> dict:
         return {

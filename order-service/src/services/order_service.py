@@ -1,7 +1,11 @@
+import os
 import uuid
-import requests
+import json
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from typing import List
+from dotenv import load_dotenv
 from src.repositories.order_repository import DynamoDBOrderRepository
 from src.models.order import Order, OrderItem
 from src.dto.order_dto import OrderResponseDTO, OrderStatusUpdateDTO, OrderItemResponseDTO
@@ -10,8 +14,10 @@ from src.utils.logger import get_logger
 
 logger = get_logger("OrderService")
 
-CART_SERVICE_URL = "http://127.0.0.1:8002/api/v1/cart"
-INVENTORY_SERVICE_URL = "http://127.0.0.1:8001/api/v1/inventory"
+# Load environment variables
+load_dotenv()
+CART_SERVICE_URL = os.environ.get("CART_SERVICE_URL")
+INVENTORY_SERVICE_URL = os.environ.get("INVENTORY_SERVICE_URL")
 
 class OrderService:
     def __init__(self, repository: DynamoDBOrderRepository):
@@ -31,25 +37,42 @@ class OrderService:
         )
 
     def create_order_from_cart(self, user_id: str) -> OrderResponseDTO:
-        # 1. Fetch Cart
+        # 1. Fetch Cart (GET Request)
         headers = {"x-user-id": user_id}
+        req = urllib.request.Request(CART_SERVICE_URL, headers=headers)
+        
         try:
-            cart_resp = requests.get(f"{CART_SERVICE_URL}/", headers=headers, timeout=5)
-            cart_data = cart_resp.json().get('data')
-            if not cart_data or not cart_data['items']:
-                raise BadRequestError("Cannot create order: Cart is empty.")
-        except requests.exceptions.RequestException:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                resp_body = response.read().decode('utf-8')
+                cart_data = json.loads(resp_body).get('data')
+                
+                if not cart_data or not cart_data.get('items'):
+                    raise BadRequestError("Cannot create order: Cart is empty.")
+        except urllib.error.URLError as e:
+            logger.error(f"Cart service error: {str(e)}")
             raise DatabaseError("Cart service is unreachable.")
 
-        # 2. Reserve Inventory for each item
+        # 2. Reserve Inventory for each item (POST Request)
         for item in cart_data['items']:
             payload = {"product_id": item['product_id'], "quantity": item['quantity']}
+            data = json.dumps(payload).encode('utf-8')
+            
+            inv_req = urllib.request.Request(
+                f"{INVENTORY_SERVICE_URL}/reserve", 
+                data=data, 
+                headers={'Content-Type': 'application/json'}
+            )
+            
             try:
-                inv_resp = requests.post(f"{INVENTORY_SERVICE_URL}/reserve", json=payload, timeout=5)
-                if inv_resp.status_code != 200:
-                    # In a real system, you would reverse the already reserved items here (Saga Pattern)
-                    raise ConflictError(f"Insufficient stock for {item['name']}")
-            except requests.exceptions.RequestException:
+                with urllib.request.urlopen(inv_req, timeout=5) as response:
+                    if response.getcode() != 200:
+                        raise ConflictError(f"Insufficient stock for {item['name']}")
+            except urllib.error.HTTPError as e:
+                # If inventory service explicitly returns an error code like 400 or 500
+                logger.error(f"Inventory HTTP error: {e.code}")
+                raise ConflictError(f"Insufficient stock for {item['name']}")
+            except urllib.error.URLError as e:
+                logger.error(f"Inventory connection error: {str(e)}")
                 raise DatabaseError("Inventory service is unreachable.")
 
         # 3. Create Order
@@ -70,11 +93,17 @@ class OrderService:
         )
         saved_order = self.repository.save(order)
 
-        # 4. Clear the Cart
+        # 4. Clear the Cart (DELETE Request)
+        clear_req = urllib.request.Request(
+            CART_SERVICE_URL, 
+            headers=headers, 
+            method='DELETE'
+        )
         try:
-            requests.delete(f"{CART_SERVICE_URL}/", headers=headers, timeout=5)
-        except requests.exceptions.RequestException:
-            logger.warning(f"Failed to clear cart for user {user_id}. Order {order.order_id} created.")
+            with urllib.request.urlopen(clear_req, timeout=5):
+                pass # Successfully cleared
+        except urllib.error.URLError as e:
+            logger.warning(f"Failed to clear cart for user {user_id}: {str(e)}. Order {order.order_id} created.")
 
         return self._build_response_dto(saved_order)
 
@@ -96,11 +125,19 @@ class OrderService:
         order.status = dto.status.upper()
         order.updated_at = datetime.now(timezone.utc)
         
-        # If order is shipped/completed, deduct inventory permanently
+        # If order is shipped/completed, deduct inventory permanently (POST Request)
         if order.status in ["SHIPPED", "COMPLETED"]:
             for item in order.items:
+                payload = {"product_id": item.product_id, "quantity": item.quantity}
+                data = json.dumps(payload).encode('utf-8')
+                deduct_req = urllib.request.Request(
+                    f"{INVENTORY_SERVICE_URL}/deduct", 
+                    data=data, 
+                    headers={'Content-Type': 'application/json'}
+                )
                 try:
-                    requests.post(f"{INVENTORY_SERVICE_URL}/deduct", json={"product_id": item.product_id, "quantity": item.quantity})
+                    with urllib.request.urlopen(deduct_req, timeout=5):
+                        pass
                 except Exception as e:
                     logger.error(f"Failed to deduct stock for {item.product_id}: {str(e)}")
 
@@ -117,10 +154,18 @@ class OrderService:
         order.status = "CANCELLED"
         order.updated_at = datetime.now(timezone.utc)
         
-        # Release the reserved inventory back to available stock
+        # Release the reserved inventory back to available stock (POST Request)
         for item in order.items:
+            payload = {"product_id": item.product_id, "quantity": item.quantity}
+            data = json.dumps(payload).encode('utf-8')
+            release_req = urllib.request.Request(
+                f"{INVENTORY_SERVICE_URL}/release", 
+                data=data, 
+                headers={'Content-Type': 'application/json'}
+            )
             try:
-                requests.post(f"{INVENTORY_SERVICE_URL}/release", json={"product_id": item.product_id, "quantity": item.quantity})
+                with urllib.request.urlopen(release_req, timeout=5):
+                    pass
             except Exception as e:
                 logger.error(f"Failed to release stock for {item.product_id}: {str(e)}")
 

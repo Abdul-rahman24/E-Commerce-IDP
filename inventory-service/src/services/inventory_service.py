@@ -1,4 +1,7 @@
-import requests
+import os
+import urllib.request
+import urllib.error
+from dotenv import load_dotenv
 from src.repositories.inventory_repository import DynamoDBInventoryRepository
 from src.dto.inventory_dto import InventoryTransactionDTO
 from src.models.inventory import Inventory
@@ -7,8 +10,9 @@ from src.utils.logger import get_logger
 
 logger = get_logger("InventoryService")
 
-# Hardcoded for local development. In production, this goes in a .env file!
-PRODUCT_SERVICE_URL = "http://127.0.0.1:8000/api/v1/products"
+# Load environment variables
+load_dotenv()
+PRODUCT_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL")
 
 class InventoryService:
     def __init__(self, repository: DynamoDBInventoryRepository):
@@ -27,16 +31,32 @@ class InventoryService:
         logger.info(f"Verifying product {dto.product_id} exists before restocking...")
         
         try:
-            # The "Phone Call" to the Menu Manager
-            response = requests.get(f"{PRODUCT_SERVICE_URL}/{dto.product_id}", timeout=5)
+            # The "Phone Call" to the Product Service using built-in urllib
+            url = f"{PRODUCT_SERVICE_URL}/{dto.product_id}"
+            req = urllib.request.Request(url)
             
-            if response.status_code == 404:
-                raise BadRequestError(f"Cannot restock: Product ID {dto.product_id} does not exist.")
-            elif response.status_code != 200:
-                raise DatabaseError("Product Service is returning errors. Cannot verify product.")
+            # This makes the GET request with a 2-second timeout
+            with urllib.request.urlopen(req, timeout=10) as response:
+                status_code = response.getcode()
                 
-        except requests.exceptions.RequestException:
-            raise DatabaseError("Product Service is offline. Cannot verify product at this time.")
+            if status_code != 200:
+                raise DatabaseError(f"Product Service returned unexpected status: {status_code}")
+                
+        except urllib.error.HTTPError as e:
+            # HTTPError catches 404, 500, etc.
+            if e.code == 404:
+                raise BadRequestError(f"Cannot restock: Product ID {dto.product_id} does not exist.")
+            else:
+                raise DatabaseError(f"Product Service is returning errors. Code: {e.code}")
+                
+        except urllib.error.URLError as e:
+            # URLError catches connection failures, DNS issues, and timeouts
+            error_message = str(e.reason)
+            logger.error(f"DEBUG: Request to Product Service failed! {error_message}")
+            raise DatabaseError(f"Product Service is offline. Error: {error_message}")
+            
+        except TimeoutError:
+            raise DatabaseError("Product Service request timed out.")
 
         # If the check passes, proceed with restocking
         logger.info("Product verified. Proceeding with restock.")

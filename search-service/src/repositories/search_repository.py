@@ -11,8 +11,11 @@ logger = get_logger("SearchRepository")
 
 class DynamoDBSearchRepository:
     def __init__(self):
-        self.dynamodb = boto3.resource('dynamodb')
-        self.table = self.dynamodb.Table('SearchIndex')
+        # Use IAM Role credentials, set the company region
+        self.dynamodb = boto3.resource('dynamodb', region_name='ap-southeast-1')
+        
+        # Point to the new company table with the _abd suffix
+        self.table = self.dynamodb.Table('searchindex_abd')
 
     def index_item(self, item: SearchItem) -> None:
         try:

@@ -4,13 +4,13 @@ from src.dto.order_dto import OrderResponseDTO, OrderStatusUpdateDTO, SuccessRes
 from src.services.order_service import OrderService
 from src.repositories.order_repository import DynamoDBOrderRepository
 
-router = APIRouter(prefix="/api/v1/orders", tags=["Orders"])
+router = APIRouter(prefix="/v1/orders", tags=["Orders"])
 
 def get_order_service() -> OrderService:
     repo = DynamoDBOrderRepository()
     return OrderService(repo)
 
-@router.post("/", response_model=SuccessResponse[OrderResponseDTO])
+@router.post("", response_model=SuccessResponse[OrderResponseDTO])
 def create_order(x_user_id: str = Header(...), service: OrderService = Depends(get_order_service)):
     # Creates order directly from the user's cart
     data = service.create_order_from_cart(x_user_id)

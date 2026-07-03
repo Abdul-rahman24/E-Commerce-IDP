@@ -1,16 +1,39 @@
 import boto3
 
-def create_table():
-    dynamodb = boto3.client('dynamodb') # Automatically uses your 'aws configure' credentials
-    
-    print("Creating 'Products' table in AWS...")
-    response = dynamodb.create_table(
-        TableName='Products',
-        KeySchema=[{'AttributeName': 'productId', 'KeyType': 'HASH'}],
-        AttributeDefinitions=[{'AttributeName': 'productId', 'AttributeType': 'S'}],
-        BillingMode='PAY_PER_REQUEST'
-    )
-    print("Table created successfully!")
+session = boto3.Session(
+    profile_name="idp-sbx-trn-lab-01",
+    region_name="ap-southeast-1"
+)
 
-if __name__ == "__main__":
-    create_table()
+dynamodb = session.client("dynamodb")
+
+response = dynamodb.create_table(
+    TableName="products_sdk_test",
+    KeySchema=[
+        {
+            "AttributeName": "productId",
+            "KeyType": "HASH"
+        }
+    ],
+    AttributeDefinitions=[
+        {
+            "AttributeName": "productId",
+            "AttributeType": "S"
+        }
+    ],
+    BillingMode="PAY_PER_REQUEST",
+    TableClass="STANDARD",
+    DeletionProtectionEnabled=False,
+    Tags=[
+        {
+            "Key": "ApplicationService",
+            "Value": ""
+        },
+        {
+            "Key": "CostCentre",
+            "Value": ""
+        }
+    ]
+)
+
+print(response["TableDescription"]["TableArn"])

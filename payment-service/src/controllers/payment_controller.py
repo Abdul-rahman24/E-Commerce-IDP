@@ -3,7 +3,7 @@ from src.dto.payment_dto import InitiatePaymentDTO, VerifyPaymentDTO, WebhookPay
 from src.services.payment_service import PaymentService
 from src.repositories.payment_repository import DynamoDBPaymentRepository
 
-router = APIRouter(prefix="/api/v1/payments", tags=["Payments"])
+router = APIRouter(prefix="/v1/payments", tags=["Payments"])
 
 def get_payment_service() -> PaymentService:
     repo = DynamoDBPaymentRepository()

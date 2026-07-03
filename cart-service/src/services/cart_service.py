@@ -1,5 +1,10 @@
-import requests
+import os
+import urllib.request
+import urllib.error
+import json
 from datetime import datetime, timezone
+from dotenv import load_dotenv # ADD THIS IMPORT
+
 from src.repositories.cart_repository import DynamoDBCartRepository
 from src.models.cart import Cart, CartItem
 from src.dto.cart_dto import AddCartItemDTO, UpdateCartItemDTO, CartResponseDTO, CartItemResponseDTO
@@ -8,8 +13,12 @@ from src.utils.logger import get_logger
 
 logger = get_logger("CartService")
 
-PRODUCT_SERVICE_URL = "http://127.0.0.1:8000/api/v1/products"
-INVENTORY_SERVICE_URL = "http://127.0.0.1:8001/api/v1/inventory"
+# Load environment variables from .env file (for local testing)
+load_dotenv()
+
+# Replace hardcoded strings with os.environ.get()
+PRODUCT_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL")
+INVENTORY_SERVICE_URL = os.environ.get("INVENTORY_SERVICE_URL")
 
 class CartService:
     def __init__(self, repository: DynamoDBCartRepository):
@@ -45,23 +54,47 @@ class CartService:
         desired_total_qty = current_qty + dto.quantity
 
         try:
-            inv_resp = requests.get(f"{INVENTORY_SERVICE_URL}/{dto.product_id}", timeout=5)
-            if inv_resp.status_code == 200:
-                available = inv_resp.json()['data']['available_quantity']
-                if desired_total_qty > available:
-                    raise BadRequestError(f"Only {available} items available in stock.")
-            elif inv_resp.status_code == 404:
+            url = f"{INVENTORY_SERVICE_URL}/{dto.product_id}"
+            req = urllib.request.Request(url)
+
+            with urllib.request.urlopen(req, timeout=2) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                available = data["data"]["available_quantity"]
+
+            if desired_total_qty > available:
+                raise BadRequestError(f"Only {available} items available in stock.")
+
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
                 raise NotFoundError("Product not found in inventory.")
-        except requests.exceptions.RequestException:
+            else:
+                raise DatabaseError(f"Inventory Service returned error: {e.code}")
+
+        except urllib.error.URLError:
             logger.warning("Inventory service unreachable. Proceeding with risk.")
 
+        except TimeoutError:
+            logger.warning("Inventory service request timed out. Proceeding with risk.")
+
         try:
-            prod_resp = requests.get(f"{PRODUCT_SERVICE_URL}/{dto.product_id}", timeout=5)
-            if prod_resp.status_code == 404:
+            url = f"{PRODUCT_SERVICE_URL}/{dto.product_id}"
+            req = urllib.request.Request(url)
+
+            with urllib.request.urlopen(req, timeout=2) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                prod_data = data["data"]
+
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
                 raise NotFoundError("Product does not exist.")
-            prod_data = prod_resp.json()['data']
-        except requests.exceptions.RequestException:
+            else:
+                raise DatabaseError(f"Product Service returned error: {e.code}")
+
+        except urllib.error.URLError:
             raise DatabaseError("Product service is unreachable.")
+
+        except TimeoutError:
+            raise DatabaseError("Product service request timed out.")
 
         cart.items[dto.product_id] = CartItem(
             product_id=dto.product_id,
