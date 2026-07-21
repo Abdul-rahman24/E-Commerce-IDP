@@ -8,10 +8,20 @@ from src.exceptions.app_exceptions import AppError
 from src.utils.logger import get_logger
 from src.repositories.cart_repository import DynamoDBCartRepository
 from src.services.cart_service import CartService
+from fastapi.middleware.cors import CORSMiddleware
+from src.controllers import cart_controller
 import json
 
 logger = get_logger("MainApp")
 app = FastAPI(title="Cart Service",redirect_slashes=False)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows your local frontend (or any domain) to connect
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows GET, POST, PUT, DELETE, etc.
+    allow_headers=["*"],  # Allows all headers
+)
 
 app.include_router(cart_controller.router)
 

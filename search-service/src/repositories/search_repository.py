@@ -34,24 +34,29 @@ class DynamoDBSearchRepository:
 
     def search(self, query: str) -> List[SearchItem]:
         try:
-            query = query.lower()
-            # WARNING: In production, Scans are expensive! 
-            # We use it here to simulate full-text search across the 'searchTags' field.
-            response = self.table.scan(
-                FilterExpression=Attr('searchTags').contains(query)
-            )
+            # 1. Clean and lowercase the search term
+            query_clean = query.strip().lower()
+            
+            # 2. Keep the existing scan to pull items out of the search index table
+            response = self.table.scan()
             
             items = []
             for item in response.get('Items', []):
-                items.append(SearchItem(
-                    product_id=item['productId'],
-                    name=item['name'],
-                    description=item.get('description', ''),
-                    category=item.get('category', ''),
-                    price=float(item['price']),
-                    images=item.get('images', []),
-                    search_tags=item.get('searchTags', '')
-                ))
+                # 💡 THE FIX: Extract the product name and make it lowercase
+                product_name = str(item.get('name', '')).lower()
+                
+                # 💡 THE CORE PREFIX LOGIC: Only match if the name STARTS WITH your query!
+                if product_name.startswith(query_clean):
+                    items.append(SearchItem(
+                        product_id=item['productId'],
+                        name=item['name'],
+                        description=item.get('description', ''),
+                        category=item.get('category', ''),
+                        price=float(item['price']),
+                        images=item.get('images', []),
+                        search_tags=item.get('searchTags', '')
+                    ))
+                    
             return items
         except ClientError as e:
             logger.error(f"DynamoDB Error: {str(e)}")

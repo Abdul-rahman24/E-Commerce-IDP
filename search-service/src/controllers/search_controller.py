@@ -11,8 +11,12 @@ def get_search_service() -> SearchService:
     return SearchService(repo)
 
 @router.get("", response_model=SuccessResponse[List[SearchResultDTO]])
-def search_products(q: str = Query(..., description="The search query string"), service: SearchService = Depends(get_search_service)):
-    data = service.perform_search(q)
+def search_products(
+    q: str = Query(..., description="The search query string (prefix match)"), 
+    service: SearchService = Depends(get_search_service)
+):
+    # Pass the trimmed query to your service layer
+    data = service.perform_search(q.trim() if hasattr(q, 'trim') else q.strip())
     return {"success": True, "data": data}
 
 @router.post("/index", response_model=SuccessResponse[str])

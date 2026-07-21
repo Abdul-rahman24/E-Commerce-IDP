@@ -6,9 +6,19 @@ from mangum import Mangum
 from src.controllers import order_controller
 from src.exceptions.app_exceptions import AppError
 from src.utils.logger import get_logger
+from fastapi.middleware.cors import CORSMiddleware
+from src.controllers import order_controller
 
 logger = get_logger("MainApp")
 app = FastAPI(title="Order Service",redirect_slashes=False)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows your local frontend (or any domain) to connect
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows GET, POST, PUT, DELETE, etc.
+    allow_headers=["*"],  # Allows all headers
+)
 
 app.include_router(order_controller.router)
 

@@ -8,10 +8,20 @@ from src.exceptions.app_exceptions import AppError
 from src.utils.logger import get_logger
 from src.repositories.inventory_repository import DynamoDBInventoryRepository
 from src.services.inventory_service import InventoryService
+from fastapi.middleware.cors import CORSMiddleware
+from src.controllers import inventory_controller
 import json
 
 logger = get_logger("MainApp")
 app = FastAPI(title="Inventory Service",redirect_slashes=False)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows your local frontend (or any domain) to connect
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows GET, POST, PUT, DELETE, etc.
+    allow_headers=["*"],  # Allows all headers
+)
 
 app.include_router(inventory_controller.router)
 
